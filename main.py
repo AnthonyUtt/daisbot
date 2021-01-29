@@ -1,16 +1,31 @@
 import discord
 from discord.ext import commands
 import random
+import re
 import os
-
-description = '''An example bot to showcase the discord.ext.commands extension
-module.
-There are a number of utility commands being showcased here.'''
 
 intents = discord.Intents.default()
 intents.members = True
 
-bot = commands.Bot(command_prefix='?', description=description, intents=intents)
+bot = commands.Bot(command_prefix='!', description='A simple TTRPG helper bot', intents=intents)
+
+# Helper functions
+def roll_die(arg: str):
+    m = re.match("(\d+)d(\d+)\s?(\+|\-)?\s?(\d+)?", arg)
+    try:
+        num = m.group(1)
+        die = m.group(2)
+        sign = m.group(3)
+        mod = m.group(4)
+
+        rolls = [random.randint(1, int(die)) for i in range(int(num))]
+        total = sum(rolls) + (int(sign + mod) if mod is not None else 0)
+        return [rolls, sign, mod, total]
+    except:
+        return
+
+def roll_dice(iter: int, arg: str):
+    return [roll_die(arg) for i in range(iter)]
 
 @bot.event
 async def on_ready():
@@ -20,49 +35,72 @@ async def on_ready():
     print('------')
 
 @bot.command()
-async def add(ctx, left: int, right: int):
-    """Adds two numbers together."""
-    await ctx.send(left + right)
+async def roll(ctx, arg:str='1d20'):
+    t = roll_die(arg)
+    if t:
+        await ctx.send('Rolling %s: (%s)%s%s = %d' % (arg, ', '.join([str(r) for r in t[0]]), ((' %s' % t[1]) if t[1] is not None else ''), ((' %s' % t[2]) if t[2] is not None else ''), t[3]), mention_author=True)
+    else:
+        await ctx.send('Invalid arguments!', mention_author=True)
+    return
 
 @bot.command()
-async def roll(ctx, dice: str):
-    """Rolls a dice in NdN format."""
+async def r(ctx, arg:str='1d20'):
+    await roll(ctx, arg)
+
+@bot.command()
+async def roll_many(ctx, i: int, arg: str):
+    rolls = roll_dice(i, arg)
+    if len(rolls) > 0:
+        msg = '\n'.join(['Rolling %s: (%s)%s%s = %d' % (arg, ', '.join([str(r) for r in t[0]]), ((' %s' % t[1]) if t[1] is not None else ''), ((' %s' % t[2]) if t[2] is not None else ''), t[3]) for t in rolls])
+        msg += ('\nTotal: %d' % (sum([t[3] for t in rolls])))
+        await ctx.send(msg, mention_author=True)
+    else:
+        await ctx.send('Invalid arguments!', mention_author=True)
+
+@bot.command()
+async def rr(ctx, i: int, arg: str):
+    await roll_many(ctx, i, arg)
+
+@bot.command()
+async def advantage(ctx, arg:str='+0'):
+    m = re.match("((\+|\-)\d+)", arg)
     try:
-        rolls, limit = map(int, dice.split('d'))
-    except Exception:
-        await ctx.send('Format has to be in NdN!')
-        return
+        mod = m.group(1)
+        rolls = roll_dice(2, '1d20' + mod)
 
-    result = ', '.join(str(random.randint(1, limit)) for r in range(rolls))
-    await ctx.send(result)
-
-@bot.command(description='For when you wanna settle the score some other way')
-async def choose(ctx, *choices: str):
-    """Chooses between multiple choices."""
-    await ctx.send(random.choice(choices))
-
-@bot.command()
-async def repeat(ctx, times: int, content='repeating...'):
-    """Repeats a message multiple times."""
-    for i in range(times):
-        await ctx.send(content)
+        if len(rolls) > 0:
+            msg = 'Rolling 1d20%s with advantage:\n' % (arg)
+            msg += '\n'.join(['Roll %d: (%s)%s%s = %d' % (i + 1, ', '.join([str(r) for r in t[0]]), ((' %s' % t[1]) if t[1] is not None else ''), ((' %s' % t[2]) if t[2] is not None else ''), t[3]) for (i, t) in enumerate(rolls)])
+            msg += ('\nResult: %d' % (max([t[3] for t in rolls])))
+            await ctx.send(msg, mention_author=True)
+        else:
+            await ctx.send('Invalid arguments!', mention_author=True)
+    except:
+        await ctx.send('Invalid arguments!', mention_author=True)
 
 @bot.command()
-async def joined(ctx, member: discord.Member):
-    """Says when a member joined."""
-    await ctx.send('{0.name} joined in {0.joined_at}'.format(member))
+async def disadvantage(ctx, arg:str='+0'):
+    m = re.match("((\+|\-)\d+)", arg)
+    try:
+        mod = m.group(1)
+        rolls = roll_dice(2, '1d20' + mod)
 
-@bot.group()
-async def cool(ctx):
-    """Says if a user is cool.
-    In reality this just checks if a subcommand is being invoked.
-    """
-    if ctx.invoked_subcommand is None:
-        await ctx.send('No, {0.subcommand_passed} is not cool'.format(ctx))
+        if len(rolls) > 0:
+            msg = 'Rolling 1d20%s with disadvantage:\n' % (arg)
+            msg += '\n'.join(['Roll %d: (%s)%s%s = %d' % (i + 1, ', '.join([str(r) for r in t[0]]), ((' %s' % t[1]) if t[1] is not None else ''), ((' %s' % t[2]) if t[2] is not None else ''), t[3]) for (i, t) in enumerate(rolls)])
+            msg += ('\nResult: %d' % (min([t[3] for t in rolls])))
+            await ctx.send(msg, mention_author=True)
+        else:
+            await ctx.send('Invalid arguments!', mention_author=True)
+    except:
+        await ctx.send('Invalid arguments!', mention_author=True)
 
-@cool.command(name='bot')
-async def _bot(ctx):
-    """Is the bot cool?"""
-    await ctx.send('Yes, the bot is cool.')
+@bot.command()
+async def adv(ctx, arg:str='+0'):
+    await advantage(ctx, arg)
+
+@bot.command()
+async def disadv(ctx, arg:str='+0'):
+    await disadvantage(ctx, arg)
 
 bot.run(os.getenv('TOKEN'))
